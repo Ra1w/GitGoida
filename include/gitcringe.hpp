@@ -11,6 +11,13 @@
 
 namespace gcringe
 {
+    enum GitCommandTypes
+    {
+        GitCommandInit,
+        GitCommandCommit,
+        GitCommandMerge,
+    };
+
     class Repo;
 
 
