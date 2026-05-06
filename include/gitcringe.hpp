@@ -2,13 +2,14 @@
 #define GITCRINGE_H
 
 
+#include <SQLiteCpp/SQLiteCpp.h>
+
 #include <iostream>
 #include <span>
 #include <string_view>
 #include <vector>
 #include <filesystem>
 #include <optional>
-
 
 
 namespace cringe
@@ -60,6 +61,7 @@ namespace cringe
     
     class Repo
     {
+        SQLite::Database db;
     public:
         
         Repo(std::filesystem::path path);
