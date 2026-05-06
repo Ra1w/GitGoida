@@ -6,10 +6,12 @@
 #include <span>
 #include <string_view>
 #include <vector>
+#include <filesystem>
+#include <optional>
 
 
 
-namespace gcringe
+namespace cringe
 {
     enum GitCommandTypes
     {
@@ -33,6 +35,14 @@ namespace gcringe
 
         // restores File sytem to state of this commit
         void RestoreFS();
+
+        bool IsChildOf(Commit other);
+
+        bool IsDirectChildOf(Commit other);
+
+        int64_t GetId();
+        
+        std::span<Commit> GetParents();
     };
 
     class Transaction
@@ -44,7 +54,7 @@ namespace gcringe
         // Applyes changes and returnining new commit
         Commit Apply();
         // Add changes
-        void LoadFile(std::string path);
+        void LoadFile(std::filesystem::path path);
     };
 
     
@@ -52,11 +62,25 @@ namespace gcringe
     {
     public:
         
-        Repo(std::string path);
+        Repo(std::filesystem::path path);
         ~Repo();
 
+        // updates current index to this commit.
+        bool UpdateIndex(std::optional<Commit> commit);
+        
+        Commit GetIndex();
+        
+        Commit GetHead();
+
+        bool MoveHead(Commit commit);
+        
+        Commit GetCommit(std::string_view identifer);
+
+        // Get root path
+        std::string_view RootPath();
+
         // Start new commit
-        Transaction StartCommit(std::string path);
+        Transaction StartCommit();
     };
 }
 
