@@ -1,6 +1,7 @@
 #include <iostream>
+#include "gitcringe.hpp"
 
-int help_fn()
+int cringe::help_fn()
 {
     std::cout << "No help! Cry about it.\n";
 

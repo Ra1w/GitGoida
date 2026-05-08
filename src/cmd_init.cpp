@@ -2,16 +2,18 @@
 #include <set>
 #include <print>
 
-int cmd_init(const std::set<char> &singles, const std::vector<std::string_view> &args)
+int cringe::cmd_init(const std::set<char> &singles, const std::vector<std::string_view> &args)
 {
     (void)singles;
     (void)args;
     
     cringe::Repo repo(std::filesystem::current_path());    
     cringe::Transaction trn = repo.StartCommit();
-    cringe::Commit commit = trn.Apply();
+    cringe::Commit commit = trn.Apply("initial commit");
+    repo.UpdateHead(commit);
+    repo.UpdateIndex(std::nullopt);
 
-    std::print("Init repository. Top commit id is {}", commit.GetId());
+    std::println("Init repository. Top commit id is {}", commit.GetId());
     
     return 0;
 }

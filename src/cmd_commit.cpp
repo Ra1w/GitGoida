@@ -4,7 +4,7 @@
 #include <print>
 
 
-int cmd_commit(const std::set<char> &singles, const std::vector<std::string_view> &args)
+int cringe::cmd_commit(const std::set<char> &singles, const std::vector<std::string_view> &args)
 {
     (void)singles;
     (void)args;
@@ -17,10 +17,10 @@ int cmd_commit(const std::set<char> &singles, const std::vector<std::string_view
     cringe::Commit index = repo.GetIndex();
     // it is Index, so it's parent is 100% head.
     assert(index.IsDirectChildOf(head));
-    repo.MoveHead(index);
+    repo.UpdateHead(index);
     repo.UpdateIndex(std::nullopt);
     
-    std::print("New commit with id {}\n", index.GetId());
+    std::println("New commit with id {}", index.GetId());
 
     return 0;
 }

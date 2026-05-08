@@ -11,6 +11,7 @@
 #include <vector>
 #include <filesystem>
 #include <optional>
+#include <generator>
 
 
 namespace cringe
@@ -45,6 +46,9 @@ namespace cringe
         commit_id_t id;
     public:
         Commit(Repo &repo, commit_id_t id);
+        Commit(const Commit& other);
+        Commit(Commit&& other) noexcept;        
+        
         ~Commit();
 
         std::vector<std::string> ListFiles();
@@ -53,7 +57,7 @@ namespace cringe
 
         bool IsDirectChildOf(Commit other);
 
-        commit_id_t GetId();
+        commit_id_t GetId() const;
         
         std::vector<Commit> GetParents();
 
@@ -82,17 +86,17 @@ namespace cringe
         std::vector<Commit> parents;
         std::string authorName;
         
-        std::generator<std::string> GetDiffrentFiles()    
-        std::generator<std::string> GetCommonFiles()    
+        std::generator<std::string> GetDiffrentFiles();
+        std::generator<std::pair<int64_t, std::string>> GetCommonFiles();
         
         int64_t GetFileId(PendingUpdate update);
             
     public:
-        Transaction(Repo &repo, std::string authorName, SQLite::Transaction tn);
+        Transaction(Repo &repo, std::string authorName);
         ~Transaction();
 
         // Applyes changes and returnining new commit
-        Commit Apply();
+        Commit Apply(std::string commitMessage);
         
         // Add changes
         void LoadFile(std::filesystem::path path);
@@ -113,6 +117,8 @@ namespace cringe
             uintmax_t FilesystemSizeThreshold = 1024*1024; // if file > this size, it will be stored in fs
         };
     public:
+
+        Configuration Config;
         
         Repo(std::filesystem::path path);
         ~Repo();
@@ -132,10 +138,13 @@ namespace cringe
         std::vector<Commit> GetCommit(std::string_view identifer);
 
         // Get root path
-        std::filesystem::path RootPath() const;
+        std::filesystem::path RootPath();
 
         // Start new commit
         Transaction StartCommit();
+
+        friend class Transaction;
+        friend class Commit;
     };
 
     int help_fn();

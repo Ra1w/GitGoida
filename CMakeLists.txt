@@ -14,7 +14,13 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(SQLiteCpp)
 
-add_executable(main src/main.cpp)
+add_executable(main src/main.cpp 
+                    src/repo.cpp 
+                    src/cmd_add.cpp
+                    src/cmd_commit.cpp
+                    src/cmd_help.cpp
+                    src/cmd_init.cpp
+                    src/cmd_log.cpp)
 
 target_link_libraries(main PRIVATE SQLiteCpp)
 target_include_directories(main PRIVATE include)

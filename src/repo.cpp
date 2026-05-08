@@ -2,7 +2,9 @@
 
 #include <vector>
 #include <string>
+#include <unordered_set>
 #include <filesystem>
+#include <fstream>
 #include <print>
 #include <cinttypes>
 #include <stdexcept>
@@ -10,16 +12,16 @@
 
 namespace cringe
 {
-    Repo::Repo(std::filesystem::path)
-        try : db(path.u8string(), SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE) 
-        { } 
-        catch (std::exception& e) 
-        {
-            std::print("Error: can't open database: {}", e.what());
-            throw;
-        },
-        root(path.lexically_normal()),
-        fs_storage_path(path/".cvcs"/"fs")
+    static std::filesystem::path ensure_dir(std::filesystem::path p) 
+    {
+        std::filesystem::create_directories(p);
+        return p;
+    }
+
+    Repo::Repo(std::filesystem::path path)
+    try : db((ensure_dir(path /".cvcs") / "cringe.db").u8string(), SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE),
+          root(path.lexically_normal()),
+          fs_storage_path(ensure_dir(path / ".cvcs") / "fs")
     {
         db.exec("PRAGMA foreign_keys = ON;");
         db.exec("PRAGMA case_sensitive_like = OFF;");
@@ -46,9 +48,9 @@ namespace cringe
             );
             CREATE TABLE IF NOT EXISTS commit_links 
             (
-                commit_id INTEGER REFERENCES commits(id) ON DELETE CASCADE, 
+                child_id INTEGER REFERENCES commits(id) ON DELETE CASCADE, 
                 parent_id INTEGER REFERENCES commits(id) ON DELETE CASCADE, 
-                PRIMARY KEY (commit_id, parent_id)
+                PRIMARY KEY (child_id, parent_id)
             );
             CREATE TABLE IF NOT EXISTS labels
             (
@@ -60,76 +62,73 @@ namespace cringe
             (
                 commit_id INTEGER REFERENCES commits(id) ON DELETE CASCADE, 
                 path TEXT, 
-                file_id INTEGER REFERENCES files(id)
+                file_id INTEGER REFERENCES files(id),
                 PRIMARY KEY (commit_id, path)
             );
-            CREATE TABLE IF NOT EXISTS head 
+            CREATE TABLE IF NOT EXISTS vhead 
             (
                 id INTEGER PRIMARY KEY CHECK (id = 1), -- Only one entry
                 commit_id INTEGER REFERENCES commits(id)
             );
-            CREATE TABLE IF NOT EXISTS index
+            CREATE TABLE IF NOT EXISTS vindex
             (
                 id INTEGER PRIMARY KEY CHECK (id = 1), -- Only one entry
                 commit_id INTEGER REFERENCES commits(id)
             );
         )Request");
+        
+        db.exec("INSERT OR IGNORE INTO vhead (id, commit_id) VALUES (1, NULL);");
+        db.exec("INSERT OR IGNORE INTO vindex (id, commit_id) VALUES (1, NULL);");
     }
+    catch (std::exception& e) 
+    {
+        throw CringeError(std::format("Error: can't open database: {}", e.what()), {});
+    }
+
 
     Repo::~Repo() = default;
 
-    bool Repo::UpdateIndex(optional<Commit> commit)
+    bool Repo::UpdateIndex(std::optional<Commit> commit)
+    {
+        int64_t commit_id = commit.has_value() ? commit->GetId() : GetHead().GetId();
+        SQLite::Statement query(db, R"Request(
+            UPDATE vindex SET commit_id = ? WHERE id = 1
+        )Request");
+        query.bind(1, commit_id);
+        return query.exec() > 0;
+    }
+
+    bool Repo::UpdateHead(Commit commit)
     {
         SQLite::Statement query(db, R"Request(
-            UPDATE index SET commit_id = ? WHERE id = 1
+            UPDATE vhead SET commit_id = ? WHERE id = 1
         )Request");
         query.bind(1, commit.GetId());
-        return query.executeStep();
+        return query.exec() > 0;
     }
 
-    boool Repo::UpdateHead(Commit commit)
+    Commit Repo::GetIndex()
     {
         SQLite::Statement query(db, R"Request(
-            UPDATE head SET commit_id = ? WHERE id = 1
-        )Request");
-        query.bind(1, head.GetId());
-        return query.executeStep();
-    }
-
-    Commit Repo::GetIndex(Commit commit)
-    {
-        SQLite::Statement query(db, R"Request(
-            SELECT commit_id FROM index WHERE id = 1
+            SELECT commit_id FROM vindex WHERE id = 1
         )Request");
         if (query.executeStep()) 
         {
             return Commit(*this, query.getColumn(0).getInt64());
         }
+        throw CringeError("?No Index commit found?", {});
     }
 
-    Commit Repo::GetHead(Commit commit)
+    Commit Repo::GetHead()
     {
         SQLite::Statement query(db, R"Request(
-            SELECT commit_id FROM head WHERE id = 1
+            SELECT commit_id FROM vhead WHERE id = 1
         )Request");
         if (query.executeStep()) 
         {
             return Commit(*this, query.getColumn(0).getInt64());
         }
-    }
-
-    std::optional<Commit> Repo::GetCommit(std::string_view identifer)
-    {
-        std::string argument = "*" + std::string(identifer) + "*";
-        
-        SQLite::Statement query(db, R"Request(
-            SELECT commit_id FROM labels WHERE name like ?
-        )Request");
-        query.bind(1, argument);
-        if (query.executeStep()) 
-        {
-            return Commit(*this, query.getColumn(0).getInt64());
-        }
+        throw CringeError("?No Index commit found?", {});
     }
     
     std::vector<Commit> Repo::GetCommit(std::string_view identifier) 
@@ -157,28 +156,27 @@ namespace cringe
         return {Commit(*this, first_id)};
     }
 
-    std::filesystem::path RootPath() const
+    std::filesystem::path Repo::RootPath()
     {
         return root;
     }
 
     Transaction Repo::StartCommit()
     {
-        SQLite::Transaction tn(db);
-        return Transaction(*this, tn);
+        return Transaction(*this, "NoName");
     }
 
-    Repo::CollectGarbage()
+    void Repo::CollectGarbage()
     {
-        db.exec(R"Request(
-            
-        )Request")
+        // TODO:
+        // db.exec(R"Request(
+        //     
+        // )Request")
     }
 
-    Transaction::Transaction(Repo &repo, std::string authorName, SQLite::Transaction tn)
-        : repo(repo), authorName(authorName), tn(tn)
+    Transaction::Transaction(Repo &repo, std::string authorName)
+             : repo(repo), authorName(authorName), tn(repo.db)
     {
-        
     }
 
     Transaction::~Transaction() = default;
@@ -190,12 +188,15 @@ namespace cringe
 
     void Transaction::LoadFile(std::filesystem::path path)
     {
+        // update path
+        path = std::filesystem::absolute(path);
+        
         // calculate hash
-        std::array<uint8_t, 32> hash = 0;
+        std::array<uint8_t, 32> hash;
         // TODO: this
         
         // insert file entry
-        updates.emplace_back(hash, 
+        updates.emplace_back(hash,
                              (std::filesystem::exists(path) ? PendingUpdateActionData
                                                             : PendingUpdateActionDelete), 
                              path.lexically_normal().lexically_relative(repo.RootPath()));
@@ -204,61 +205,61 @@ namespace cringe
     int64_t Transaction::GetFileId(Transaction::PendingUpdate update)
     {
         // is there file with same content
-        SQLite::Statement query(db, R"Request(
+        SQLite::Statement query(repo.db, R"Request(
             SELECT id FROM files WHERE hash = ?
         )Request");
-        query.bind(1, update.hash);
+        query.bind(1, update.hash.data(), update.hash.size());
         if (query.executeStep())
         {
             // found same file, use it's id
-            return Commit(*this, query.getColumn(0).getInt64());
+            return query.getColumn(0).getInt64();
         }
 
         // need to create new file.
-        uintmax_t size = std::filesystem::file_size(update.path);
-        if (size > Repo.Config.FilesystemSizeThreshold)
+        uintmax_t size = std::filesystem::file_size(update.file);
+        if (size > repo.Config.FilesystemSizeThreshold)
         {
             // copy and compress file to directory
             // TODO copy
             std::filesystem::path result_path = "...";
             
             // insert new entry into files
-            SQLite::Statement query(db, R"Request(
+            SQLite::Statement query(repo.db, R"Request(
                 INSERT INTO files (hash, in_filesystem, blob_id, filesystem_path) VALUES (?, true, null, ?)
             )Request");
             query.bind(1, update.hash.data(), update.hash.size());
             query.bind(2, result_path);
             query.exec();
-            return db.getLastInsertRowid();
+            return repo.db.getLastInsertRowid();
         }
         else
         {
             // read file
-            std::ifstream file(filePath, std::ios::binary);
+            std::ifstream file(update.file, std::ios::binary);
             if (!file.is_open()) 
             {
-                throw exception("Can't open file.");
+                throw CringeError(std::format("Can't open file {}.", update.file.string()), {});
             }
             std::vector<std::byte> buffer(size);
             if (!file.read(reinterpret_cast<char*>(buffer.data()), size)) 
             {
-                throw exception("Can't read file.");
+                throw CringeError(std::format("Can't open file {}.", update.file.string()), {});
             }
             // insert new entry into blobs
-            SQLite::Statement queryBlob(db, R"Request(
+            SQLite::Statement queryBlob(repo.db, R"Request(
                 INSERT INTO blobs (data) VALUES (?)
             )Request");
             queryBlob.bind(1, buffer.data(), static_cast<int>(buffer.size()));
             queryBlob.exec();
-            int64_t blob_id = db.getLastInsertRowid();
+            int64_t blob_id = repo.db.getLastInsertRowid();
             // insert new entry into files
-            SQLite::Statement query(db, R"Request(
+            SQLite::Statement query(repo.db, R"Request(
                 INSERT INTO files (hash, in_filesystem, blob_id, filesystem_path) VALUES (?, false, ?, null)
             )Request");
             query.bind(1, update.hash.data(), update.hash.size());
             query.bind(2, blob_id);
             query.exec();
-            return db.getLastInsertRowid();
+            return repo.db.getLastInsertRowid();
         }
     }
 
@@ -275,7 +276,7 @@ namespace cringe
             queryParams += ", ?";
         }
     
-        SQLite::Statement query(db, R"Request(
+        SQLite::Statement query(repo.db, R"Request(
             SELECT path 
             FROM commit_fs 
             WHERE commit_id IN ()Request" + queryParams + R"Request() 
@@ -285,12 +286,11 @@ namespace cringe
         )Request");
         
         int bindIndex = 1;
-        for (const Commit &id : parentIds) 
+        for (const Commit &id : parents) 
         {
             query.bind(bindIndex++, id.GetId());
         }
-        
-        query.bind(bindIndex, parentIds.size());
+        query.bind(bindIndex, static_cast<int64_t>(parents.size()));
     
         while (query.executeStep()) 
         {
@@ -298,7 +298,7 @@ namespace cringe
         }
     }
     
-    std::generator<std::string> Transaction::GetCommonFiles()
+    std::generator<std::pair<int64_t, std::string>> Transaction::GetCommonFiles()
     {
         if (parents.size() == 0) 
         {
@@ -311,7 +311,7 @@ namespace cringe
             queryParams += ", ?";
         }
     
-        SQLite::Statement query(db, R"Request(
+        SQLite::Statement query(repo.db, R"Request(
             SELECT MIN(file_id) as file_id, path 
             FROM commit_fs 
             WHERE commit_id IN ()Request" + queryParams + R"Request() 
@@ -320,11 +320,11 @@ namespace cringe
         )Request");
         
         int bindIndex = 1;
-        for (const Commit &id : parentIds) 
+        for (const Commit &id : parents) 
         {
             query.bind(bindIndex++, id.GetId());
         }
-        query.bind(bindIndex, parentIds.size());
+        query.bind(bindIndex, static_cast<int64_t>(parents.size()));        
     
         while (query.executeStep()) 
         {
@@ -333,12 +333,12 @@ namespace cringe
     }
 
 
-    Commit Transaction::Apply()
+    Commit Transaction::Apply(std::string commitMessage)
     {
         // check if all diffrent files was changed, if there is more than 1 parent
         if (parents.size() > 1)
         {
-            std::hash_set<std::string> loaded;
+            std::unordered_set<std::string> loaded;
             for (auto update : updates)
             {
                 loaded.insert(update.file);
@@ -359,17 +359,17 @@ namespace cringe
 
         // calculate commit hash, as all updates hash + parent hash.
         // TODO: do we need hashes for commits at all?
-        std::array<uint8_t, 32> buffer();
+        std::array<uint8_t, 32> buffer;
         
         // inset new commit id
-        SQLite::Statement query(db, R"Request(
+        SQLite::Statement query(repo.db, R"Request(
             INSERT INTO commits (hash, author, message) VALUES (?, ?, ?)
         )Request");
         query.bind(1, buffer.data(), static_cast<int>(buffer.size()));
         query.bind(2, authorName);
         query.bind(3, commitMessage);
         query.exec();
-        int64_t commit_id = db.getLastInsertRowid();
+        int64_t commit_id = repo.db.getLastInsertRowid();
 
         // insert all new and old files
         // add all new files
@@ -379,12 +379,12 @@ namespace cringe
             path2id[update.file] = GetFileId(update);
         }
         // add old files
-        for (auto [path, id] : GetCommonFiles())
+        for (auto [id, path] : GetCommonFiles())
         {
             path2id[path] = id;
         }
         
-        SQLite::Statement fsInsertQuery(db, R"Request(
+        SQLite::Statement fsInsertQuery(repo.db, R"Request(
             INSERT INTO commit_fs (commit_id, path, file_id) VALUES (?, ?, ?)
         )Request");
 
@@ -400,38 +400,45 @@ namespace cringe
         }
 
         
-        SQLite::Statement linkInsertQuery(db, R"Request(
-            INSERT INTO commit_lin (commit_id, parent_id) VALUES (?, ?)
+        SQLite::Statement linkInsertQuery(repo.db, R"Request(
+            INSERT INTO commit_links (child_id, parent_id) VALUES (?, ?)
         )Request");
 
-        for (int64_t parent_id : parents) 
+        for (const Commit &parent : parents) 
         {
             linkInsertQuery.reset();
             
             linkInsertQuery.bind(1, commit_id);
-            linkInsertQuery.bind(2, parent_id);
+            linkInsertQuery.bind(2, parent.GetId());
             
             linkInsertQuery.executeStep();
         }
 
         tn.commit();
+        
+        return Commit(repo, commit_id);
     }
 
     Commit::Commit(Repo &repo, commit_id_t id) 
         : repo(repo),
           id(id)
     {}
+    
+    Commit::Commit(const Commit& other) 
+        : repo(other.repo), id(other.id) 
+    {}
+    
+    Commit::Commit(Commit&& other) noexcept 
+        : repo(other.repo), id(other.id) 
+    {
+        other.id = -1;
+    }
 
     Commit::~Commit() = default;
 
     std::vector<std::string> Commit::ListFiles()
     {
-        if (parents.size() == 0) 
-        {
-            return {};
-        }
-    
-        SQLite::Statement query(db, R"Request(
+        SQLite::Statement query(repo.db, R"Request(
             SELECT path -- DISTINCT isn't required
             FROM commit_fs 
             WHERE commit_id = ?
@@ -441,7 +448,7 @@ namespace cringe
         results.reserve(256); // for average fs
         while (query.executeStep()) 
         {
-            result.emplace_back(query.getColumn(0).getInt64(), query.getColumn(1).getText());
+            results.emplace_back(query.getColumn(0).getText());
         }
         return results;
     }
@@ -449,13 +456,13 @@ namespace cringe
     bool Commit::IsChildOf(Commit other) 
     {
         if (this->GetId() == other.GetId()) return true;
-        SQLite::Statement query(db, R"Request(
+        SQLite::Statement query(repo.db, R"Request(
             WITH RECURSIVE ancestors(id) AS (
                 SELECT ? 
                 UNION
                 SELECT parent_id
-                FROM commit_parents
-                JOIN ancestors ON ancestors.id = commit_parents.child_id
+                FROM commit_links
+                JOIN ancestors ON ancestors.id = commit_links.child_id
             )
             SELECT EXISTS(SELECT 1 FROM ancestors WHERE id = ?)
         )Request");
@@ -472,8 +479,8 @@ namespace cringe
     
     bool Commit::IsDirectChildOf(Commit other) 
     {
-        SQLite::Statement query(db, R"Request(
-            SELECT 1 FROM commit_parents WHERE child_id = ? AND parent_id = ?
+        SQLite::Statement query(repo.db, R"Request(
+            SELECT 1 FROM commit_links WHERE child_id = ? AND parent_id = ?
         )Request");
         
         query.bind(1, id);
@@ -482,15 +489,10 @@ namespace cringe
         return query.executeStep();
     }
 
-    commit_id_t GetId()
-    {
-        return id;
-    }
-
     std::vector<Commit> Commit::GetParents() 
     {
-        SQLite::Statement query(db, R"Request(
-            SELECT parent_id FROM commit_parents WHERE child_id = ?
+        SQLite::Statement query(repo.db, R"Request(
+            SELECT parent_id FROM commit_links WHERE child_id = ?
         )Request");
         query.bind(1, id);
         
@@ -499,7 +501,7 @@ namespace cringe
         while (query.executeStep()) 
         {
             commit_id_t parentId = query.getColumn(0).getInt64();    
-            parents.emplace_back(db, parentId);
+            parents.emplace_back(repo, parentId);
         }
 
         return parents;
@@ -509,7 +511,7 @@ namespace cringe
     {
         std::string relativePath = path.lexically_normal().lexically_relative(repo.RootPath()).string();
         
-        SQLite::Statement query(db, R"Request(
+        SQLite::Statement query(repo.db, R"Request(
             SELECT f.in_filesystem, f.filesystem_path, b.data
             FROM commit_fs cfs
             JOIN files f ON cfs.file_id = f.id
@@ -547,6 +549,11 @@ namespace cringe
             out.write(static_cast<const char*>(blob.getBlob()), blob.getBytes());
             return true;
         }
+    }
+
+    commit_id_t Commit::GetId() const
+    {
+        return id;
     }
     
 }
