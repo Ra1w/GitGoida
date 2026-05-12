@@ -4,6 +4,8 @@
 #include <cstring>
 #include <string>
 #include <unordered_set>
+#include <set>
+#include <map>
 #include <filesystem>
 #include <fstream>
 #include <print>
@@ -640,14 +642,25 @@ namespace cringe
         // insert all new and old files
         // add all new files
         std::map<std::string, int64_t> path2id;
+        std::set<std::string> deleted;
         for (auto update : updates)
         {
-            path2id[update.file] = GetFileId(update);
+            if (update.action == PendingUpdateActionData)
+            {
+                path2id[update.file] = GetFileId(update);
+            }
+            else
+            {
+                deleted.insert(update.file);
+            }
         }
         // add old files
         for (auto [id, path] : GetCommonFiles())
         {
-            path2id[path] = id;
+            if (!deleted.contains(path))
+            {
+                path2id[path] = id;
+            }
         }
         
         SQLite::Statement fsInsertQuery(repo.db, R"Request(
