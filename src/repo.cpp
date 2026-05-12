@@ -173,6 +173,24 @@ namespace cringe
         return {Commit(*this, first_id)};
     }
 
+    std::vector<Commit> Repo::GetReferences()
+    {
+        std::vector<Commit> refs;
+        SQLite::Statement query(db, R"Request(
+            SELECT DISTINCT commit_id FROM labels WHERE commit_id IS NOT NULL
+            UNION
+            SELECT commit_id FROM vhead WHERE commit_id IS NOT NULL
+            UNION
+            SELECT commit_id FROM vindex WHERE commit_id IS NOT NULL
+        )Request");
+        
+        while (query.executeStep()) 
+        {
+            refs.emplace_back(*this, query.getColumn(0).getInt64());
+        }
+        return refs;
+    }
+
     std::filesystem::path Repo::RootPath()
     {
         return root;
@@ -783,6 +801,39 @@ namespace cringe
     commit_id_t Commit::GetId() const
     {
         return id;
+    }
+
+    std::string Commit::GetAuthor() const
+    {
+        SQLite::Statement query(repo.db, R"Request(
+            SELECT author FROM commits WHERE id = ?
+        )Request");
+
+        query.bind(1, id);
+        
+        if (query.executeStep()) 
+        {
+            return query.getColumn(0).getText();
+        }
+
+        return "Unknown";
+    }
+
+
+    std::string Commit::GetMessage() const
+    {
+        SQLite::Statement query(repo.db, R"Request(
+            SELECT message FROM commits WHERE id = ?
+        )Request");
+
+        query.bind(1, id);
+        
+        if (query.executeStep()) 
+        {
+            return query.getColumn(0).getText();
+        }
+
+        return "";
     }
     
 }

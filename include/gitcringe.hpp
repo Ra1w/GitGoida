@@ -51,6 +51,10 @@ namespace cringe
         bool IsDirectChildOf(Commit other);
 
         commit_id_t GetId() const;
+
+        std::string GetAuthor() const;
+        
+        std::string GetMessage() const;
         
         std::vector<Commit> GetParents();
 
@@ -139,6 +143,8 @@ namespace cringe
 
         // Returns from 0 to 2 commits.
         std::vector<Commit> GetCommit(std::string_view identifer);
+
+        std::vector<Commit> GetReferences();
 
         std::vector<std::pair<UpdateTypes, std::filesystem::path>> ListChangedFiles(Commit commit);
 

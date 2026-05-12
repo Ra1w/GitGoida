@@ -1,19 +1,32 @@
 #include <set>
 #include <vector>
 #include <print>
+#include <queue>
+#include <unordered_set>
 #include "gitcringe.hpp"
 
 
 int cringe::cmd_log(const std::set<char> &singles, const std::vector<std::string_view> &args)
 {
     (void)singles;
-    // bool one_line = std::find(args.begin(), args.end(), "--oneline") != args.end();
-    // bool show_all = std::find(args.begin(), args.end(), "--all") != args.end();
+    bool one_line = std::find(args.begin(), args.end(), "--oneline") != args.end();
+    bool show_all = std::find(args.begin(), args.end(), "--all") != args.end();
 
     cringe::Repo repo(std::filesystem::current_path());
     
     std::optional<cringe::Commit> base = repo.GetHead();
-    if (args.size() == 1)
+
+    std::string_view target_commit = "";
+    for (std::string_view arg : args) 
+    {
+        if (!arg.starts_with("--")) 
+        {
+            target_commit = arg;
+            break;
+        }
+    }
+
+    if (!target_commit.empty())
     {
         auto result = repo.GetCommit(args[0]);
         if (result.size() == 2)
@@ -29,13 +42,81 @@ int cringe::cmd_log(const std::set<char> &singles, const std::vector<std::string
         base.emplace(result[0]);
     }
 
-    (void)args;
-
     std::println("Run from base id {}", base->GetId());
 
     /* create tree from strings */
-    // std::map<int64_t, >
-    // for ()
+    
+    std::priority_queue<int64_t> pq;
+    std::unordered_set<int64_t> visited;
+
+    if (show_all)
+    {
+        for (cringe::Commit& ref : repo.GetReferences())
+        {
+            if (ref.GetId() != 0 && visited.insert(ref.GetId()).second)
+            {
+                pq.push(ref.GetId());
+            }
+        }
+    }
+    else if (base.has_value() && base->GetId() != 0)
+    {
+        pq.push(base->GetId());
+        visited.insert(base->GetId());
+    }
+
+    if (pq.empty())
+    {
+        std::println("No commits found.");
+        return 1;
+    }
+
+    while (!pq.empty())
+    {
+        int64_t current_id = pq.top();
+        pq.pop();
+
+        cringe::Commit current(repo, current_id);
+
+        std::string author = current.GetAuthor();
+        std::string msg = current.GetMessage();
+
+        if (one_line)
+        {
+            std::string first_line = msg;
+            size_t nl = msg.find('\n');
+            if (nl != std::string::npos) 
+            {
+                first_line = msg.substr(0, nl);
+            }
+            std::println("{} {}", current_id, first_line);
+        }
+        else
+        {
+            std::println("commit {}", current_id);
+            std::println("Author: {}", author);
+            std::println("");
+            
+            size_t start = 0;
+            size_t end = msg.find('\n');
+            while (end != std::string::npos) 
+            {
+                std::println("    {}", msg.substr(start, end - start));
+                start = end + 1;
+                end = msg.find('\n', start);
+            }
+            std::println("    {}", msg.substr(start));
+            std::println("");
+        }
+
+        for (cringe::Commit& parent : current.GetParents())
+        {
+            if (parent.GetId() != 0 && visited.insert(parent.GetId()).second)
+            {
+                pq.push(parent.GetId());
+            }
+        }
+    }
 
     return 0;
 }
