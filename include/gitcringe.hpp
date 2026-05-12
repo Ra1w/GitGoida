@@ -26,13 +26,6 @@ namespace cringe
         {}
     };
     
-    
-    enum GitCommandTypes
-    {
-        GitCommandInit,
-        GitCommandCommit,
-        GitCommandMerge,
-    };
 
     class Repo;
 
@@ -105,6 +98,14 @@ namespace cringe
         void AddParent(Commit commit);
     };
 
+
+    enum UpdateTypes
+    {
+        UPDATE_CREATE,
+        UPDATE_CHANGE,
+        UPDATE_DELETE,
+    };
+
     
     class Repo
     {
@@ -137,6 +138,8 @@ namespace cringe
         // Returns from 0 to 2 commits.
         std::vector<Commit> GetCommit(std::string_view identifer);
 
+        std::vector<std::pair<UpdateTypes, std::filesystem::path>> ListChangedFiles(Commit commit);
+
         // Get root path
         std::filesystem::path RootPath();
 
@@ -152,6 +155,7 @@ namespace cringe
     int cmd_add(const std::set<char> &singles, const std::vector<std::string_view> &args);
     int cmd_log(const std::set<char> &singles, const std::vector<std::string_view> &args);
     int cmd_commit(const std::set<char> &singles, const std::vector<std::string_view> &args);
+    int cmd_status(const std::set<char> &singles, const std::vector<std::string_view> &args);
 }
 
 

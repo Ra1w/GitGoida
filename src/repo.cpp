@@ -1,6 +1,7 @@
 #include "gitcringe.hpp"
 
 #include <vector>
+#include <cstring>
 #include <string>
 #include <unordered_set>
 #include <filesystem>
@@ -9,6 +10,22 @@
 #include <cinttypes>
 #include <stdexcept>
 #include <generator>
+
+
+#include "../include/picosha2.h"
+
+
+std::array<uint8_t, 32> GetFileHash(std::filesystem::path file)
+{
+    std::array<uint8_t, 32> hash;
+    std::ifstream f(file, std::ios::binary);
+    if (f.is_open()) 
+    {
+        picosha2::hash256(f, hash.begin(), hash.end());
+    }
+    return hash;
+}
+
 
 namespace cringe
 {
@@ -174,6 +191,78 @@ namespace cringe
         // )Request")
     }
 
+    std::vector<std::pair<UpdateTypes, std::filesystem::path>> Repo::ListChangedFiles(Commit commit)
+    {    
+        std::vector<std::pair<UpdateTypes, std::filesystem::path>> results;
+        results.reserve(32);
+        std::set<std::string> existing;
+        for (auto it = std::filesystem::recursive_directory_iterator(root); 
+                  it != std::filesystem::recursive_directory_iterator(); ++it) 
+        {
+            if (std::filesystem::is_directory(*it) && it->path().filename() == ".cvcs") 
+            {
+                it.disable_recursion_pending(); 
+                continue;
+            }
+    
+            if (std::filesystem::is_regular_file(*it)) 
+            {
+                std::array<uint8_t, 32> new_hash = GetFileHash(it->path());
+                
+                // TODO: add timestamp database
+                       
+                SQLite::Statement query(db, R"Request(
+                    SELECT f.hash
+                    FROM commit_fs cf JOIN files f ON cf.file_id = f.id
+                    WHERE cf.commit_id = ?
+                      AND cf.path = ?
+                )Request");
+
+                query.bind(1, commit.GetId());
+                std::string name = std::filesystem::absolute(it->path()).lexically_normal().lexically_relative(root).string();
+                query.bind(2, name);
+                existing.insert(name);
+
+                if (query.executeStep()) 
+                {
+                    SQLite::Column column = query.getColumn(0);
+                    const void* db_hash_ptr = column.getBlob();
+                    size_t db_hash_size = column.getBytes();
+                
+                    if (db_hash_size != new_hash.size() || std::memcmp(db_hash_ptr, new_hash.data(), new_hash.size()) != 0) 
+                    {
+                        results.emplace_back(UPDATE_CHANGE, it->path());
+                    }
+                } 
+                else 
+                {
+                    results.emplace_back(UPDATE_CREATE, it->path());
+                }
+                
+            }
+        }
+
+        /* now, find all deleted files */
+        SQLite::Statement query(db, R"Request(
+            SELECT path
+            FROM commit_fs
+            WHERE commit_id = ?
+        )Request");
+
+        query.bind(1, commit.GetId());
+
+        while (query.executeStep())
+        {
+            std::string path_in_commit = query.getColumn(0).getText();
+            if (existing.find(path_in_commit) == existing.end())
+            {
+                results.emplace_back(UPDATE_DELETE, std::filesystem::path(path_in_commit));
+            }
+        }
+        
+        return results;
+    }
+
     Transaction::Transaction(Repo &repo, std::string authorName)
              : repo(repo), authorName(authorName), tn(repo.db)
     {
@@ -192,8 +281,7 @@ namespace cringe
         path = std::filesystem::absolute(path);
         
         // calculate hash
-        std::array<uint8_t, 32> hash;
-        // TODO: this
+        std::array<uint8_t, 32> hash = GetFileHash(path);
         
         // insert file entry
         updates.emplace_back(hash,

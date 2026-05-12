@@ -20,6 +20,7 @@ add_executable(main src/main.cpp
                     src/cmd_commit.cpp
                     src/cmd_help.cpp
                     src/cmd_init.cpp
+                    src/cmd_status.cpp
                     src/cmd_log.cpp)
 
 target_link_libraries(main PRIVATE SQLiteCpp)

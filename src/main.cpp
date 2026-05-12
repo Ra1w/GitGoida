@@ -93,6 +93,10 @@ int main(int argc, const char **argv)
     {
         return cringe::cmd_log(singles, args);
     }
+    else if (command == "status")
+    {
+        return cringe::cmd_status(singles, args);
+    }
     else
     {
         std::vector<std::string> known_commands = {
@@ -100,6 +104,7 @@ int main(int argc, const char **argv)
             "add",
             "commit",
             "log",
+            "status",
             "help",
         };
         std::sort(known_commands.begin(), known_commands.end(), 
