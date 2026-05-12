@@ -139,6 +139,8 @@ namespace cringe
         
         bool UpdateHead(Commit commit);
         
+        void Squash(Commit child, Commit parent_to_drop);
+
         Commit GetIndex();
         
         Commit GetHead();

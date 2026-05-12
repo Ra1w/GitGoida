@@ -124,6 +124,25 @@ namespace cringe
         return query.exec() > 0;
     }
 
+    void Repo::Squash(Commit child, Commit parent_to_drop)
+    {
+        if (child.GetId() == parent_to_drop.GetId() || parent_to_drop.GetId() == 0) return;
+
+        SQLite::Statement qLink(db, R"Request(
+            INSERT OR IGNORE INTO commit_links (child_id, parent_id)
+            SELECT ?, parent_id FROM commit_links WHERE child_id = ?
+        )Request");
+        qLink.bind(1, child.GetId());
+        qLink.bind(2, parent_to_drop.GetId());
+        qLink.exec();
+
+        SQLite::Statement qDelete(db, R"Request(
+            DELETE FROM commits WHERE id = ?
+        )Request");
+        qDelete.bind(1, parent_to_drop.GetId());
+        qDelete.exec();
+    }
+
     Commit Repo::GetIndex()
     {
         SQLite::Statement query(db, R"Request(
