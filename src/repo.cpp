@@ -657,7 +657,7 @@ namespace cringe
         // add old files
         for (auto [id, path] : GetCommonFiles())
         {
-            if (!deleted.contains(path))
+            if (!deleted.contains(path) && !path2id.contains(path))
             {
                 path2id[path] = id;
             }
