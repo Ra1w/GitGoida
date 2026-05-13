@@ -74,6 +74,8 @@ namespace cringe
 
         // restores File to state of this commit
         bool RestoreFile(std::filesystem::path);
+        
+        std::string GetFileContent(std::filesystem::path path);
     };
 
     enum PendingUpdateAction
@@ -189,6 +191,7 @@ namespace cringe
     int cmd_branch(const std::set<char> &singles, const std::vector<std::string_view> &args);
     int cmd_merge(const std::set<char> &singles, const std::vector<std::string_view> &args);
     int cmd_show(const std::set<char> &singles, const std::vector<std::string_view> &args);
+    int cmd_diff(const std::set<char> &singles, const std::vector<std::string_view> &args);
     int cmd_squash(const std::set<char> &singles, const std::vector<std::string_view> &args);
 }
 
