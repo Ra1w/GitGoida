@@ -1,6 +1,6 @@
 # GitCringe
 
-> A purely local version control system. Like Git, but cringe.
+A local version control system. Like Git, but cringe.
 
 GitCringe is an experimental, local-only Version Control System. It explores an alternative approach to traditional VCS architecture by storing the entire repository graph, index, and file blobs inside a relational database rather than relying on a flat file system structure.
 
