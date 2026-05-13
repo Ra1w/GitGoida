@@ -90,9 +90,31 @@ int cringe::cmd_switch(const std::set<char> &singles, const std::vector<std::str
         new_head.RestoreFile(repo.RootPath() / f);
     }
 
+    bool is_branch = false;
+    for (const auto& [b_name, b_id] : repo.ListBranches())
+    {
+        if (b_name == target) 
+        {
+            is_branch = true;
+            break;
+        }
+    }
+
+    repo.DetachHead();
+
     repo.UpdateHead(new_head);
     repo.UpdateIndex(std::nullopt);
-    std::println("Switched to commit {}", new_head.GetId());
+
+    if (is_branch)
+    {
+        repo.AttachHead(std::string(target));
+        std::println("Switched to branch '{}'", target);
+    }
+    else
+    {
+        repo.DetachHead();
+        std::println("Switched to commit {} (detached HEAD)", new_head.GetId());
+    }
 
     return 0;
 }

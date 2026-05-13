@@ -136,6 +136,16 @@ namespace cringe
 
         void CollectGarbage();
 
+        bool CreateBranch(std::string_view name, Commit commit);
+        
+        std::vector<std::pair<std::string, commit_id_t>> ListBranches();
+        
+        std::string GetCurrentBranch();
+        
+        bool AttachHead(std::string_view branch_name);
+        
+        bool DetachHead();
+
         // updates current index to this commit.
         bool UpdateIndex(std::optional<Commit> commit);
         
@@ -173,6 +183,7 @@ namespace cringe
     int cmd_commit(const std::set<char> &singles, const std::vector<std::string_view> &args);
     int cmd_status(const std::set<char> &singles, const std::vector<std::string_view> &args);
     int cmd_switch(const std::set<char> &singles, const std::vector<std::string_view> &args);
+    int cmd_branch(const std::set<char> &singles, const std::vector<std::string_view> &args);
 }
 
 

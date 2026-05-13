@@ -101,6 +101,10 @@ int main(int argc, const char **argv)
     {
         return cringe::cmd_status(singles, args);
     }
+    else if (command == "branch") // <--- НОВОЕ
+    {
+        return cringe::cmd_branch(singles, args);
+    }
     else if (command == "switch")
     {
         return cringe::cmd_switch(singles, args);

@@ -84,10 +84,16 @@ namespace cringe
                 file_id INTEGER REFERENCES files(id),
                 PRIMARY KEY (commit_id, path)
             );
+            CREATE TABLE IF NOT EXISTS branches
+            (
+                name TEXT PRIMARY KEY,
+                commit_id INTEGER REFERENCES commits(id)
+            );
             CREATE TABLE IF NOT EXISTS vhead 
             (
                 id INTEGER PRIMARY KEY CHECK (id = 1), -- Only one entry
-                commit_id INTEGER REFERENCES commits(id)
+                commit_id INTEGER REFERENCES commits(id),
+                branch_name TEXT REFERENCES branches(name)
             );
             CREATE TABLE IF NOT EXISTS vindex
             (
@@ -96,7 +102,7 @@ namespace cringe
             );
         )Request");
         
-        db.exec("INSERT OR IGNORE INTO vhead (id, commit_id) VALUES (1, NULL);");
+        db.exec("INSERT OR IGNORE INTO vhead (id, commit_id, branch_name) VALUES (1, NULL, NULL);");
         db.exec("INSERT OR IGNORE INTO vindex (id, commit_id) VALUES (1, NULL);");
     }
     catch (std::exception& e) 
@@ -123,7 +129,19 @@ namespace cringe
             UPDATE vhead SET commit_id = ? WHERE id = 1
         )Request");
         query.bind(1, commit.GetId());
-        return query.exec() > 0;
+        bool res = query.exec() > 0;
+
+        std::string branch = GetCurrentBranch();
+        if (!branch.empty()) 
+        {
+            SQLite::Statement queryBranch(db, R"Request(
+                UPDATE branches SET commit_id = ? WHERE name = ?
+            )Request");
+            queryBranch.bind(1, commit.GetId());
+            queryBranch.bind(2, branch);
+            queryBranch.exec();
+        }
+        return res;
     }
 
     void Repo::Squash(Commit child, Commit parent_to_drop)
@@ -185,6 +203,16 @@ namespace cringe
             {
                 return {};
             }
+        }
+
+        SQLite::Statement queryBranch(db, R"Request(
+            SELECT commit_id FROM branches WHERE name = ?
+        )Request");
+        queryBranch.bind(1, str_id);
+        
+        if (queryBranch.executeStep())
+        {
+            return {Commit(*this, queryBranch.getColumn(0).getInt64())};
         }
 
         bool is_number = !str_id.empty() && std::all_of(str_id.begin(), str_id.end(), [](unsigned char c) 
@@ -280,6 +308,62 @@ namespace cringe
         // db.exec(R"Request(
         //     
         // )Request")
+    }
+
+    bool Repo::CreateBranch(std::string_view name, Commit commit)
+    {
+        SQLite::Statement query(db, R"Request(
+            INSERT INTO branches (name, commit_id) VALUES (?, ?)
+        )Request");
+        query.bind(1, std::string(name));
+        query.bind(2, commit.GetId());
+        return query.exec() > 0;
+    }
+
+    std::vector<std::pair<std::string, commit_id_t>> Repo::ListBranches()
+    {
+        std::vector<std::pair<std::string, commit_id_t>> res;
+        SQLite::Statement query(db, R"Request(
+            SELECT name, commit_id FROM branches
+        )Request");
+
+        while (query.executeStep()) 
+        {
+            res.emplace_back(query.getColumn(0).getString(), query.getColumn(1).getInt64());
+        }
+        return res;
+    }
+
+    std::string Repo::GetCurrentBranch()
+    {
+        SQLite::Statement query(db, R"Request(
+            SELECT branch_name FROM vhead WHERE id = 1
+        )Request");
+
+        if (query.executeStep() && !query.isColumnNull(0)) 
+        {
+            return query.getColumn(0).getString();
+        }
+        return "";
+    }
+
+    bool Repo::AttachHead(std::string_view branch_name)
+    {
+        SQLite::Statement query(db, R"Request(
+            UPDATE vhead SET branch_name = ? WHERE id = 1
+        )Request");
+        query.bind(1, std::string(branch_name));
+        
+        return query.exec() > 0;
+    }
+
+    bool Repo::DetachHead()
+    {
+        SQLite::Statement query(db, R"Request(
+            UPDATE vhead SET branch_name = NULL WHERE id = 1
+        )Request");
+        
+        return query.exec() > 0;
     }
 
     std::vector<std::pair<UpdateTypes, std::filesystem::path>> Repo::ListChangedFiles(Commit commit)
@@ -935,20 +1019,48 @@ namespace cringe
     std::vector<std::string> Commit::GetLabels() const
     {
         std::vector<std::string> labels;
+
+        bool is_head = false;
+        std::string head_branch = "";
         
         SQLite::Statement qHead(repo.db, R"Request(
-            SELECT 1 FROM vhead WHERE commit_id = ?
+            SELECT branch_name FROM vhead WHERE commit_id = ?
         )Request");
         qHead.bind(1, id);
         if (qHead.executeStep())
         {
-            labels.push_back("HEAD");
+            is_head = true;
+            if (qHead.isColumnNull(0)) 
+            {
+                labels.push_back("HEAD (detached)");
+            }
+            else 
+            {
+                head_branch = qHead.getColumn(0).getString();
+                labels.push_back("HEAD -> " + head_branch);
+            }
+        }
+
+        SQLite::Statement qBranches(repo.db, R"Request(
+            SELECT name FROM branches WHERE commit_id = ?
+        )Request");
+        qBranches.bind(1, id);
+        
+        while (qBranches.executeStep()) 
+        {
+            std::string bname = qBranches.getColumn(0).getString();
+            if (is_head && bname == head_branch)
+            {
+                continue;
+            }
+            labels.push_back(bname);
         }
         
         SQLite::Statement qLabels(repo.db, R"Request(
             SELECT name FROM labels WHERE commit_id = ?
         )Request");
         qLabels.bind(1, id);
+
         while (qLabels.executeStep()) 
         {
             labels.push_back(qLabels.getColumn(0).getString());
