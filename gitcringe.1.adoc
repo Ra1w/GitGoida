@@ -1,0 +1,95 @@
+= gitcringe(1)
+Artyom Chugunov <ArtyomCh2007@yandex.ru>; Mihail Afanasiev <michele.afanasiev@gmail.com>
+:doctype: manpage
+:manmanual: Gitcringe Manual
+:mansource: gitcringe 1.0.0
+:page-layout: base
+
+== NAME
+
+gitcringe - a simple local version control system. Like Git, but cringe.
+
+== SYNOPSIS
+
+*gitcringe* _COMMAND_ [_OPTIONS_...] [_ARGS_...]
+
+== DESCRIPTION
+
+*gitcringe* is an experimental, purely local version control system. Unlike traditional tools (like Git) that manage objects directly on the filesystem, gitcringe stores the entire repository graph, commits, index, and file blobs inside an embedded SQLite database. 
+
+It uses auto-incrementing integer IDs for commits instead of hashes, making it strictly a local-only tool (no push/pull capabilities).
+
+== COMMANDS
+
+*init*::
+    Initializes a new gitcringe repository in the current directory. Creates a `.cvcs` hidden directory containing the `cringe.db` SQLite database and sets up the `main` branch.
+
+*add* [-A] [_FILE_...]::
+    Adds file contents to the index (staging area). 
+    If *-A* is specified, recursively adds all files in the current repository (ignoring `.cvcs`).
+    If files are specified, adds only the targeted files.
+
+*commit* [-m _MESSAGE_]::
+    Records changes to the repository. If the *-m* option is omitted, *gitcringe* will open the default text editor to prompt for a commit message. Commits with empty messages are aborted.
+
+*status*::
+    Displays the state of the working directory and the index. Shows files that have been created, updated, or deleted relative to the `HEAD` commit and the index.
+
+*log* [--oneline] [--all] [_TARGET_]::
+    Shows the commit logs.
+    *--oneline*::: Shows each commit compressed to a single line.
+    *--all*::: Shows all branches and references.
+    If _TARGET_ (commit ID or branch name) is provided, displays the history starting from that reference.
+
+*switch* _TARGET_::
+    Switches the working tree to the specified branch or commit ID. If switching to a specific commit ID instead of a branch name, the repository enters a "detached HEAD" state. Fails if there are uncommitted conflicts.
+
+*branch* [_NAME_]::
+    If no arguments are provided, lists all existing branches and highlights the current one.
+    If _NAME_ is provided, creates a new branch pointing to the current `HEAD`.
+
+*merge* _TARGET_...::
+    Merges one or more target commits into the current `HEAD`. Uses a custom N-way line-by-line merge algorithm. If conflicts occur, conflict markers (`==\=>>> START CRINGE MERGE CONFLICT <<\<===`) are inserted into the files, requiring manual resolution before committing.
+
+*diff* [_TARGET_]::
+    Shows the line-by-line differences between the current working tree/index and the specified commit (defaults to `HEAD`). 
+
+*show* [--format=_FORMAT_] [_TARGET_]::
+    Shows the details and file changes of a specific commit (defaults to `HEAD`).
+    The *--format* option allows custom output formatting using placeholders:
+    `%h` (commit ID), `%an` (author), `%s` (message), `%d` (labels/branches), `%n` (newline).
+
+*squash* _CHILD_ [_PARENT_]::
+    Squashes the _CHILD_ commit into its parent. If the child has multiple parents, the specific _PARENT_ must be provided as the second argument. The child commit must be a direct descendant of the parent.
+
+*exec* _QUERY_::
+    Directly executes raw SQL queries against the underlying `.cvcs/cringe.db` database and prints the result in an ASCII table. Useful for deep debugging or creating some cringe in your database.
+
+*help*::
+    Refuses to provide help and suggests the user cry about it.
+
+== ENVIRONMENT
+
+*CRINGE_EDITOR*, *VISUAL*, *EDITOR*::
+    Specifies the text editor to use when a commit message is required. Evaluated in the listed order. If none are set, defaults to `vi`.
+
+== FILES
+
+*.cvcs/*::
+    The repository metadata folder. Should not be modified directly.
+
+*.cvcs/cringe.db*::
+    The SQLite database containing all blobs, trees, commits, and branches.
+
+*.cvcs/fs/*::
+    Directory reserved for Large File Storage (LFS) bypassing the database (partially implemented).
+
+== BUGS
+
+Memory consumption during *diff* operations scales at O(N*M), so it may cause out-of-memory errors on very large files.
+
+Moreover this program is (probably) full of bugs and errors. Try to find them all!
+
+== AUTHORS
+
+Written by Artyom Chugunov <ArtyomCh2007@yandex.ru> and Mihail Afanasiev <michele.afanasiev@gmail.com>.
