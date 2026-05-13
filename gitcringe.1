@@ -1,0 +1,159 @@
+'\" t
+.\"     Title: gitcringe
+.\"    Author: Artyom Chugunov, Mihail Afanasiev
+.\" Generator: Asciidoctor 2.0.26
+.\"      Date: 2026-05-13
+.\"    Manual: Gitcringe Manual
+.\"    Source: gitcringe 1.0.0
+.\"  Language: English
+.\"
+.TH "GITCRINGE" "1" "2026-05-13" "gitcringe 1.0.0" "Gitcringe Manual"
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.ss \n[.ss] 0
+.nh
+.ad l
+.de URL
+\fI\\$2\fP <\\$1>\\$3
+..
+.als MTO URL
+.if \n[.g] \{\
+.  mso www.tmac
+.  am URL
+.    ad l
+.  .
+.  am MTO
+.    ad l
+.  .
+.  LINKSTYLE blue R < >
+.\}
+.SH "NAME"
+gitcringe \- a simple local version control system. Like Git, but cringe.
+.SH "SYNOPSIS"
+.sp
+\fBgitcringe\fP \fICOMMAND\fP [\fIOPTIONS\fP.\|.\|.] [\fIARGS\fP.\|.\|.]
+.SH "DESCRIPTION"
+.sp
+\fBgitcringe\fP is an experimental, purely local version control system. Unlike traditional tools (like Git) that manage objects directly on the filesystem, gitcringe stores the entire repository graph, commits, index, and file blobs inside an embedded SQLite database.
+.sp
+It uses auto\-incrementing integer IDs for commits instead of hashes, making it strictly a local\-only tool (no push/pull capabilities).
+.SH "COMMANDS"
+.sp
+\fBinit\fP
+.RS 4
+Initializes a new gitcringe repository in the current directory. Creates a \f(CR.cvcs\fP hidden directory containing the \f(CRcringe.db\fP SQLite database and sets up the \f(CRmain\fP branch.
+.RE
+.sp
+\fBadd\fP [\-A] [\fIFILE\fP.\|.\|.]
+.RS 4
+Adds file contents to the index (staging area).
+If \fB\-A\fP is specified, recursively adds all files in the current repository (ignoring \f(CR.cvcs\fP).
+If files are specified, adds only the targeted files.
+.RE
+.sp
+\fBcommit\fP [\-m \fIMESSAGE\fP]
+.RS 4
+Records changes to the repository. If the \fB\-m\fP option is omitted, \fBgitcringe\fP will open the default text editor to prompt for a commit message. Commits with empty messages are aborted.
+.RE
+.sp
+\fBstatus\fP
+.RS 4
+Displays the state of the working directory and the index. Shows files that have been created, updated, or deleted relative to the \f(CRHEAD\fP commit and the index.
+.RE
+.sp
+\fBlog\fP [\-\-oneline] [\-\-all] [\fITARGET\fP]
+.RS 4
+Shows the commit logs.
+.sp
+\fB\-\-oneline\fP
+.RS 4
+Shows each commit compressed to a single line.
+.RE
+.sp
+\fB\-\-all\fP
+.RS 4
+Shows all branches and references.
+If \fITARGET\fP (commit ID or branch name) is provided, displays the history starting from that reference.
+.RE
+.RE
+.sp
+\fBswitch\fP \fITARGET\fP
+.RS 4
+Switches the working tree to the specified branch or commit ID. If switching to a specific commit ID instead of a branch name, the repository enters a "detached HEAD" state. Fails if there are uncommitted conflicts.
+.RE
+.sp
+\fBbranch\fP [\fINAME\fP]
+.RS 4
+If no arguments are provided, lists all existing branches and highlights the current one.
+If \fINAME\fP is provided, creates a new branch pointing to the current \f(CRHEAD\fP.
+.RE
+.sp
+\fBmerge\fP \fITARGET\fP.\|.\|.
+.RS 4
+Merges one or more target commits into the current \f(CRHEAD\fP. Uses a custom N\-way line\-by\-line merge algorithm. If conflicts occur, conflict markers (\f(CR===>>> START CRINGE MERGE CONFLICT <<<===\fP) are inserted into the files, requiring manual resolution before committing.
+.RE
+.sp
+\fBdiff\fP [\fITARGET\fP]
+.RS 4
+Shows the line\-by\-line differences between the current working tree/index and the specified commit (defaults to \f(CRHEAD\fP).
+.RE
+.sp
+\fBshow\fP [\-\-format=\fIFORMAT\fP] [\fITARGET\fP]
+.RS 4
+Shows the details and file changes of a specific commit (defaults to \f(CRHEAD\fP).
+The \fB\-\-format\fP option allows custom output formatting using placeholders:
+\f(CR%h\fP (commit ID), \f(CR%an\fP (author), \f(CR%s\fP (message), \f(CR%d\fP (labels/branches), \f(CR%n\fP (newline).
+.RE
+.sp
+\fBsquash\fP \fICHILD\fP [\fIPARENT\fP]
+.RS 4
+Squashes the \fICHILD\fP commit into its parent. If the child has multiple parents, the specific \fIPARENT\fP must be provided as the second argument. The child commit must be a direct descendant of the parent.
+.RE
+.sp
+\fBexec\fP \fIQUERY\fP
+.RS 4
+Directly executes raw SQL queries against the underlying \f(CR.cvcs/cringe.db\fP database and prints the result in an ASCII table. Useful for deep debugging or creating some cringe in your database.
+.RE
+.sp
+\fBhelp\fP
+.RS 4
+Refuses to provide help and suggests the user cry about it.
+.RE
+.SH "ENVIRONMENT"
+.sp
+\fBCRINGE_EDITOR\fP, \fBVISUAL\fP, \fBEDITOR\fP
+.RS 4
+Specifies the text editor to use when a commit message is required. Evaluated in the listed order. If none are set, defaults to \f(CRvi\fP.
+.RE
+.SH "FILES"
+.sp
+\fB.cvcs/\fP
+.RS 4
+The repository metadata folder. Should not be modified directly.
+.RE
+.sp
+\fB.cvcs/cringe.db\fP
+.RS 4
+The SQLite database containing all blobs, trees, commits, and branches.
+.RE
+.sp
+\fB.cvcs/fs/\fP
+.RS 4
+Directory reserved for Large File Storage (LFS) bypassing the database (partially implemented).
+.RE
+.SH "BUGS"
+.sp
+Memory consumption during \fBdiff\fP operations scales at O(N*M), so it may cause out\-of\-memory errors on very large files.
+.sp
+Moreover this program is (probably) full of bugs and errors. Try to find them all!
+.SH "AUTHORS"
+.sp
+Written by Artyom Chugunov \c
+.MTO "ArtyomCh2007\(atyandex.ru" "" ""
+and Mihail Afanasiev <
+.MTO "michele.afanasiev\(atgmail.com" "" ">."
+.SH "AUTHORS"
+.sp
+Artyom Chugunov
+.sp
+Mihail Afanasiev

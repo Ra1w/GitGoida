@@ -14,7 +14,7 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(SQLiteCpp)
 
-add_executable(main src/main.cpp 
+add_executable(gitcringe src/main.cpp 
                     src/repo.cpp 
                     src/cmd_add.cpp
                     src/cmd_commit.cpp
@@ -30,13 +30,17 @@ add_executable(main src/main.cpp
                     src/cmd_squash.cpp
                     src/cmd_show.cpp)
 
-target_link_libraries(main PRIVATE SQLiteCpp)
-target_include_directories(main PRIVATE include)
+target_link_libraries(gitcringe PRIVATE SQLiteCpp)
+target_include_directories(gitcringe PRIVATE include)
 
 
-set_target_properties(main PROPERTIES OUTPUT_NAME "gitcringe")
+set_target_properties(gitcringe PROPERTIES OUTPUT_NAME "gitcringe")
 
-install(TARGETS main DESTINATION bin)
+install(TARGETS gitcringe DESTINATION bin)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/gitcringe.1 DESTINATION share/man/man1)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/gitcringe_completion.bash 
+        DESTINATION share/bash-completion/completions 
+        RENAME gitcringe)
 
 set(CPACK_GENERATOR "DEB")
 set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
